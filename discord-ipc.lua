@@ -65,11 +65,20 @@ local function stringify(data)
             formatted = '"'..formatted..'"'
         end
 
-        table.insert(result, string.format("\"%s\":%s", k, formatted))
+        if type(k) == "number" then
+            table.insert(result, formatted)
+        else
+            table.insert(result, string.format("\"%s\":%s", k, formatted))
+        end
     end
 
-    return "{"..table.concat(result, ",").."}"
+    if #data > 0 then
+        return "["..table.concat(result, ",").."]"
+    else
+        return "{"..table.concat(result, ",").."}"
+    end
 end
+
 
 local function getPID()
     if jit.os == "Windows" then
@@ -290,7 +299,10 @@ function discordIPC:sendActivity()
         nonce = getUUID()
     }
 
-    self:send(stringify(data), self.OPCODES.FRAME)
+    local o = self:send(stringify(data), self.OPCODES.FRAME)
+    print("Sent activity to Discord IPC", stringify(data), o)
+    
+    return o
 end
 
 function discordIPC:clearActivity()
