@@ -79,7 +79,6 @@ local function stringify(data)
     end
 end
 
-
 local function getPID()
     if jit.os == "Windows" then
         ffi.cdef[[
@@ -149,32 +148,47 @@ local function _unpack(str)
     return bytesToInt(strToBytes(str:sub(1, 4))), bytesToInt(strToBytes(str:sub(5, 8)))
 end
 
-local discordIPC = {}
-function discordIPC:initID(id)
-    self.id = id
-    self.activity = {}
-    self.connected = false
-    self.OPCODES = {
+---@class discordIPC
+---@field id string The ID of the Discord IPC
+---@field OPCODES table<string, number> The opcodes for the Discord IPC -- Meant for internal use
+---@field PIPE_ENVS table<string> The environment variables for the Discord IPC -- Meant for internal use
+---@field PIPE_PATHS table<string> The paths for the Discord IPC -- Meant for internal use
+---@field activity table<string, any> The current activity for the Discord IPC
+---@field connected boolean Whether the Discord IPC is connected or not
+local discordIPC = {
+    id = "",
+    OPCODES = {
         HANDSHAKE = 0,
         FRAME = 1,
         CLOSE = 2,
         PING = 3,
         PONG = 4
-    }
-    self.PIPE_ENVS = {
+    },
+    PIPE_ENVS = {
         "XDG_RUNTIME_DIR",
         "TMPDIR",
         "TMP",
         "TEMP"
-    }
-    self.PIPE_PATHS = {
+    },
+    PIPE_PATHS = {
         "",
         "app/com.discordapp.Discord/",
         "snap.discord-canary/",
         "snap.discord/"
-    }
+    },
+    activity = {},
+    connected = false
+}
+
+---@param id string
+---@return nil
+--- Initializes the Discord IPC with the given ID
+function discordIPC:initID(id)
+    self.id = id
 end
 
+---@return boolean connected Whether the IPC is connected or not
+--- Connects to the Discord IPC, 
 function discordIPC:connect()
     if not self.id then error("Attempted to connect to Discord IPC without an ID") end
 
@@ -230,18 +244,24 @@ function discordIPC:connect()
 
     if self.socket then
         self.connected = true
-        local result = self:sendHandshake()
+        local result = self:__sendHandshake()
         print("Successfully connected to Discord IPC")
 
         return result == self.OPCODES.FRAME
     end
+
+    return false
 end
 
+---@return nil
+--- Reconnects to the Discord IPC
 function discordIPC:reconnect()
     self:close()
     self:connect()
 end
 
+---@return nil
+--- Closes the connection to the Discord IPC
 function discordIPC:close()
     if not self.socket then return end
 
@@ -258,7 +278,12 @@ function discordIPC:close()
     print("Successfully disconnected Discord IPC")
 end
 
-function discordIPC:write(msg)
+---@param msg string
+---@internal
+--- Writes a message to the Discord IPC
+--- 
+--- this is an internal function and should not be used outside of this library
+function discordIPC:__write(msg)
     if not self.socket then return end
 
     if jit.os == "Windows" then
@@ -278,17 +303,32 @@ function discordIPC:write(msg)
     end
 end
 
-function discordIPC:send(data, opcode)
-    self:write(pack(opcode, #data) .. data)
+---@param data string
+---@param opcode number
+---@return number opcode, string data
+---@internal
+--- Sends a message to the Discord IPC
+--- 
+--- this is an internal function and should not be used outside of this library
+function discordIPC:__send(data, opcode)
+    self:__write(pack(opcode, #data) .. data)
 
-    return self:receive()
+    local opcode, data = self:__receive()
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return opcode, data
 end
 
-function discordIPC:sendHandshake()
-    print("Awaiting Discord IPC handshake...", '{"v": 1, "client_id": "'..self.id..'"}')
-    return self:send('{"v": 1, "client_id": "'..self.id..'"}', self.OPCODES.HANDSHAKE)
+---@return number opcode, string data
+---@internal
+--- Sends a handshake message to the Discord IPC allowing us to connect
+--- 
+--- this is an internal function and should not be used outside of this library
+function discordIPC:__sendHandshake()
+    return self:__send('{"v": 1, "client_id": "'..self.id..'"}', self.OPCODES.HANDSHAKE)
 end
 
+---@return number opcode
+--- Sends a message to the Discord IPC with the current activity
 function discordIPC:sendActivity()
     local data = {
         cmd = "SET_ACTIVITY",
@@ -299,12 +339,14 @@ function discordIPC:sendActivity()
         nonce = getUUID()
     }
 
-    local o = self:send(stringify(data), self.OPCODES.FRAME)
+    local o = self:__send(stringify(data), self.OPCODES.FRAME)
     print("Sent activity to Discord IPC", stringify(data), o)
-    
+
     return o
 end
 
+---@return nil
+--- Clears the current activity on the Discord IPC
 function discordIPC:clearActivity()
     local activity = {
         cmd = "SET_ACTIVITY",
@@ -315,15 +357,21 @@ function discordIPC:clearActivity()
         nonce = getUUID()
     }
 
-    self:send(stringify(activity), self.OPCODES.FRAME)
+    self:__send(stringify(activity), self.OPCODES.FRAME)
 end
 
-function discordIPC:receive()
+---@return number opcode, string data
+---@internal
+--- Receives a message from the Discord IPC
+--- 
+--- this is an internal function and should not be used outside of this library
+function discordIPC:__receive()
     local opcode, length, data = nil, nil, nil
 
     if jit.os == "Windows" then
-        opcode, length = _unpack(self:read(8))
-        data = self:read(length)
+        opcode, length = _unpack(self:__read(8))
+        data = self:__read
+        (length)
     else
         local hbuffer = ffi.new("char[8]")
         local hbytes = ffi.C.recv(self.socket, hbuffer, 8, 0)
@@ -334,10 +382,16 @@ function discordIPC:receive()
         data = ffi.string(dbuffer, dbytes)
     end
 
+    ---@diagnostic disable-next-line: return-type-mismatch
     return opcode, data
 end
 
-function discordIPC:read(buf)
+---@param buf number
+---@internal
+--- Reads a message from the Discord IPC
+--- 
+--- this is an internal function and should not be used outside of this library
+function discordIPC:__read(buf)
     if not self.socket then return end
 
     return self.socket:read(buf)
