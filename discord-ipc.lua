@@ -265,7 +265,7 @@ end
 function discordIPC:close()
     if not self.socket then return end
 
-    self:send("{}", self.OPCODES.CLOSE)
+    self:__send("{}", self.OPCODES.CLOSE)
     if jit.os == "Windows" then
         self.socket:close()
     else
@@ -370,13 +370,12 @@ function discordIPC:__receive()
 
     if jit.os == "Windows" then
         opcode, length = _unpack(self:__read(8))
-        data = self:__read
-        (length)
+        data = self:__read(length)
     else
         local hbuffer = ffi.new("char[8]")
         local hbytes = ffi.C.recv(self.socket, hbuffer, 8, 0)
         opcode, length = _unpack(ffi.string(hbuffer, hbytes))
-        
+  
         local dbuffer = ffi.new("char[" .. length .. "]")
         local dbytes = ffi.C.recv(self.socket, dbuffer, length, 0)
         data = ffi.string(dbuffer, dbytes)
