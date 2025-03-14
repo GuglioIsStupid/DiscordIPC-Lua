@@ -1,7 +1,7 @@
 -- Discord IPC lua -- A discord rich presence library for IPC
 -- This library is based off of https://github.com/vionya/discord-rich-presence
--- assert jit and ffi
 
+-- assert jit and ffi. This library requires them both
 local ffi, jit, e
 e, ffi = pcall(require, "ffi")
 if not e then
