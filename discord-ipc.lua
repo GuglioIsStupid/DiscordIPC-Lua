@@ -12,6 +12,9 @@ if not e then
     error("Failed to load JIT library")
 end
 
+local AF_UNIX = 1
+local SOCK_STREAM = 1
+
 ffi.cdef [[
 typedef unsigned int size_t;
 typedef unsigned short sa_family_t;
@@ -203,11 +206,8 @@ function discordIPC:connect()
             end
         end
     else
-        ffi.cdef[[
-#define AF_UNIX 1
-#define SOCK_STREAM 1
-        ]]
-        local socket = ffi.C.socket(ffi.C.AF_UNIX, ffi.C.SOCK_STREAM, 0)
+        local socket = ffi.C.socket(AF_UNIX, SOCK_STREAM, 0)
+
         if socket < 0 then
             print("Failed to create Discord IPC socket")
             return false
