@@ -12,6 +12,9 @@ if not e then
     error("Failed to load JIT library")
 end
 
+local AF_UNIX = 1
+local SOCK_STREAM = 1
+
 ffi.cdef [[
 typedef unsigned int size_t;
 typedef unsigned short sa_family_t;
@@ -203,7 +206,8 @@ function discordIPC:connect()
             end
         end
     else
-        local socket = ffi.C.socket(1, 1, 0)
+        local socket = ffi.C.socket(AF_UNIX, SOCK_STREAM, 0)
+
         if socket < 0 then
             print("Failed to create Discord IPC socket")
             return false
@@ -227,10 +231,12 @@ function discordIPC:connect()
 
         for i = 0, 9 do
             for _, v in ipairs(self.PIPE_PATHS) do
+                local path = env.."/discord-ipc-"..i
                 local address = ffi.new("struct sockaddr_un")
                 address.sun_family = 1
-                ffi.copy(address.sun_path, env.."/discord-ipc-"..i)
-                local connected = ffi.C.connect(socket, ffi.cast("struct sockaddr*", address), ffi.sizeof(address))
+                ffi.copy(address.sun_path, path)
+                local addrlen = ffi.offsetof("struct sockaddr_un", "sun_path") + #path + 1
+                local connected = ffi.C.connect(socket, ffi.cast("struct sockaddr*", address), addrlen)
 
                 if connected == 0 then
                     print("Connected to DiscordIPC Pipe #"..i)
@@ -295,7 +301,7 @@ function discordIPC:__write(msg)
             print("Failed to write to Discord IPC with error "..err)
         end
     else
-        local sent = ffi.C.send(self.socket, msg, #msg, 0)
+        local sent = ffi.C.send(self.socket, ffi.cast("const char*", msg), #msg, 0)
 
         if sent < 0 then
             print("Failed to write to Discord IPC")
@@ -375,7 +381,7 @@ function discordIPC:__receive()
         local hbuffer = ffi.new("char[8]")
         local hbytes = ffi.C.recv(self.socket, hbuffer, 8, 0)
         opcode, length = _unpack(ffi.string(hbuffer, hbytes))
-  
+
         local dbuffer = ffi.new("char[" .. length .. "]")
         local dbytes = ffi.C.recv(self.socket, dbuffer, length, 0)
         data = ffi.string(dbuffer, dbytes)
